@@ -13,7 +13,7 @@ app.post('/execute', async (req, res) => {
 
   let sandbox;
   try {
-    sandbox = await Sandbox.create({ timeout: 120 });
+    sandbox = await Sandbox.create({ timeout: 180 });
 
     let pkgData;
 
@@ -26,7 +26,7 @@ app.post('/execute', async (req, res) => {
       } catch (e) {
         // Raw Python fallback
         await sandbox.files.write('main.py', code);
-        const result = await sandbox.commands.run('python3 main.py', { timeout: 60 });
+        const result = await sandbox.commands.run('python3 main.py', { timeout: 120 });
         return res.json({
           stdout: result.stdout,
           stderr: result.stderr,
@@ -69,7 +69,7 @@ app.post('/execute', async (req, res) => {
 
     // Run the test command
     const testCmd = pkgData.test_command || `python3 ${pkgData.files[0].filename}`;
-    const result = await sandbox.commands.run(testCmd, { timeout: 60 });
+    const result = await sandbox.commands.run(testCmd, { timeout: 120 });
 
     return res.json({
       stdout: result.stdout,
