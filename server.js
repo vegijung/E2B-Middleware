@@ -5,9 +5,9 @@ const app = express();
 app.use(express.json());
 
 app.post('/execute', async (req, res) => {
-  const { code } = req.body;
+  const { code, files } = req.body;
 
-  if (!code) {
+  if (!code && !files) {
     return res.status(400).json({ error: 'No code provided' });
   }
 
@@ -15,25 +15,29 @@ app.post('/execute', async (req, res) => {
   try {
     sandbox = await Sandbox.create({ timeout: 120 });
 
-    // Parse the package JSON from Developer Generator
     let pkgData;
-    try {
-      pkgData = JSON.parse(code);
-    } catch(e) {
-      // If not JSON, run as raw Python
-      await sandbox.files.write('main.py', code);
-      const result = await sandbox.commands.run('python3 main.py', { timeout: 60 });
-      return res.json({
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exit_code: result.exitCode,
-        success: result.exitCode === 0
-      });
+
+    if (files) {
+      // Direct package format (Governance harness sends e2b_package as body)
+      pkgData = req.body;
+    } else {
+      try {
+        pkgData = JSON.parse(code);
+      } catch (e) {
+        // Raw Python fallback
+        await sandbox.files.write('main.py', code);
+        const result = await sandbox.commands.run('python3 main.py', { timeout: 60 });
+        return res.json({
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exit_code: result.exitCode,
+          success: result.exitCode === 0
+        });
+      }
     }
 
     // Write all files to sandbox
     for (const file of pkgData.files) {
-      // Create directories if needed
       if (file.filename.includes('/')) {
         const dir = file.filename.substring(0, file.filename.lastIndexOf('/'));
         await sandbox.commands.run(`mkdir -p ${dir}`);
@@ -42,12 +46,14 @@ app.post('/execute', async (req, res) => {
     }
 
     // Install dependencies (skip standard library modules)
-    const stdLibModules = ['os', 'sys', 'logging', 'unittest', 'json', 'time', 
-                          'math', 'random', 'datetime', 'collections', 'itertools',
-                          'functools', 'pathlib', 'io', 'abc', 'typing'];
-    
+    const stdLibModules = [
+      'os', 'sys', 'logging', 'unittest', 'json', 'time',
+      'math', 'random', 'datetime', 'collections', 'itertools',
+      'functools', 'pathlib', 'io', 'abc', 'typing'
+    ];
+
     if (pkgData.install_dependencies && pkgData.install_dependencies.length > 0) {
-      const validDeps = pkgData.install_dependencies.filter(d => 
+      const validDeps = pkgData.install_dependencies.filter(d =>
         !stdLibModules.includes(d.toLowerCase())
       );
       if (validDeps.length > 0) {
